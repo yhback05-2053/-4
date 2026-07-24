@@ -1,6 +1,29 @@
 // src/App.jsx
-import { useState } from "react";
+//
+// [초보자를 위한 설명]
+// 기능(뉴스 입력 → /api/generate 호출 → 결과 표시)은 이전과 완전히 동일합니다.
+// 이번에 바뀐 건 "Azure Verity" 디자인 시스템에 맞춘 화면 스타일뿐입니다.
+
+import { useState, useEffect } from "react";
 import "./style.css";
+import { db } from "./firebaseConfig";
+import {
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
+
+const CIRCLE_RADIUS = 38;
+const CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
+
+// 원형 게이지의 stroke-dashoffset 값을 계산하는 함수
+function dashOffset(percent) {
+  const clamped = Math.max(0, Math.min(100, percent || 0));
+  return CIRCUMFERENCE * (1 - clamped / 100);
+}
 
 function getResultClass(result) {
   if (result === "사실 가능성이 높음") return "result-true";
@@ -8,11 +31,82 @@ function getResultClass(result) {
   return "result-suspicious";
 }
 
+// 원형 신뢰도 게이지 컴포넌트 (스타일 전용, 새 기능 아님)
+function Gauge({ label, value, colorClass }) {
+  return (
+    <div className="gauge-box">
+      <span className="gauge-label">{label}</span>
+      <div className="gauge-ring">
+        <svg viewBox="0 0 88 88">
+          <circle className="track" cx="44" cy="44" r={CIRCLE_RADIUS} />
+          <circle
+            className={`value ${colorClass}`}
+            cx="44"
+            cy="44"
+            r={CIRCLE_RADIUS}
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={dashOffset(value)}
+          />
+        </svg>
+        <span className="gauge-number">{value}%</span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [newsText, setNewsText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
+
+  // ---- 게시판(사용자 의견) 관련 상태 ----
+  const [boardText, setBoardText] = useState("");
+  const [boardPosts, setBoardPosts] = useState([]);
+  const [boardSubmitting, setBoardSubmitting] = useState(false);
+  const [boardError, setBoardError] = useState("");
+
+  // 앱을 열면(마운트되면) Firestore의 posts 컬렉션을 최신순으로 실시간 구독
+  useEffect(() => {
+    const postsQuery = query(collection(db, "posts"), orderBy("createdAt", "desc"));
+
+    const unsubscribe = onSnapshot(
+      postsQuery,
+      (snapshot) => {
+        const list = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setBoardPosts(list);
+      },
+      (err) => {
+        setBoardError("게시글을 불러오는 중 오류가 발생했습니다.");
+        console.error(err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  async function handleBoardSubmit() {
+    if (!boardText.trim()) {
+      setBoardError("등록할 의견을 입력해주세요.");
+      return;
+    }
+
+    setBoardError("");
+    setBoardSubmitting(true);
+
+    try {
+      await addDoc(collection(db, "posts"), {
+        text: boardText.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setBoardText("");
+    } catch (err) {
+      setBoardError("등록 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      console.error(err);
+    } finally {
+      setBoardSubmitting(false);
+    }
+  }
 
   async function handleAnalyze() {
     if (!newsText.trim()) {
@@ -27,9 +121,7 @@ export default function App() {
     try {
       const response = await fetch("/api/generate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ newsText }),
       });
 
@@ -52,12 +144,8 @@ export default function App() {
     <div className="app">
       <div className="container">
         <header className="header">
-          <div className="header-top">
-            <div>
-              <h1>Fact Check AI</h1>
-              <p className="subtitle">AI 가짜뉴스 판별기</p>
-            </div>
-          </div>
+          <h1>Fact Check AI</h1>
+          <p className="subtitle">AI 가짜뉴스 판별기</p>
         </header>
 
         <section className="input-card">
@@ -94,24 +182,28 @@ export default function App() {
             </div>
 
             <div className="stat-row">
-              <div className="stat-box">
-                <div className="stat-label">거짓 확률</div>
-                <div className="stat-value fake">{analysis.fakeProbability}%</div>
-              </div>
-              <div className="stat-box">
-                <div className="stat-label">신뢰도 점수</div>
-                <div className="stat-value confidence">{analysis.confidence}%</div>
-              </div>
+              <Gauge label="거짓 확률" value={analysis.fakeProbability} colorClass="fake" />
+              <Gauge label="신뢰도 점수" value={analysis.confidence} colorClass="confidence" />
             </div>
 
             <div className="detail-block">
               <h3>AI 분석 근거</h3>
-              <p>{analysis.reason}</p>
+              <div className="detail-row">
+                <span className="material-symbols-outlined detail-icon">analytics</span>
+                <div className="detail-text">
+                  <p>{analysis.reason}</p>
+                </div>
+              </div>
             </div>
 
             <div className="detail-block">
               <h3>왜 문제가 있는지 (또는 신뢰할 수 있는지) 설명</h3>
-              <p>{analysis.explanation}</p>
+              <div className="detail-row">
+                <span className="material-symbols-outlined detail-icon">source</span>
+                <div className="detail-text">
+                  <p>{analysis.explanation}</p>
+                </div>
+              </div>
             </div>
 
             {analysis.verificationNeeded?.length > 0 && (
@@ -142,6 +234,39 @@ export default function App() {
             </p>
           </section>
         )}
+
+        <section className="board-card">
+          <h2 className="board-title">사용자 의견 게시판</h2>
+
+          <textarea
+            className="board-input"
+            placeholder="이 서비스에 대한 의견을 남겨주세요."
+            value={boardText}
+            onChange={(e) => setBoardText(e.target.value)}
+            rows={3}
+          />
+
+          <button
+            className="board-submit-btn"
+            onClick={handleBoardSubmit}
+            disabled={boardSubmitting}
+          >
+            {boardSubmitting ? "등록 중..." : "등록"}
+          </button>
+
+          {boardError && <div className="error-box board-error">⚠️ {boardError}</div>}
+
+          <ul className="board-list">
+            {boardPosts.length === 0 && (
+              <li className="board-empty">아직 등록된 의견이 없습니다.</li>
+            )}
+            {boardPosts.map((post) => (
+              <li key={post.id} className="board-item">
+                {post.text}
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     </div>
   );
