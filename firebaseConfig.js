@@ -11,13 +11,14 @@ import { getFirestore } from "firebase/firestore";
 
 // ▼▼▼ 아래 객체를 본인의 firebaseConfig 값으로 교체하세요 ▼▼▼
 const firebaseConfig = {
-  apiKey: "여기에_본인_apiKey_붙여넣기",
-  authDomain: "여기에_본인_authDomain_붙여넣기",
-  projectId: "여기에_본인_projectId_붙여넣기",
-  storageBucket: "여기에_본인_storageBucket_붙여넣기",
-  messagingSenderId: "여기에_본인_messagingSenderId_붙여넣기",
-  appId: "여기에_본인_appId_붙여넣기",
-};
+    apiKey: "AIzaSyDCH3Qahn2rPtFsrla4e5bbpiRR-smKZjQ",
+    authDomain: "project-6745945850324870739.firebaseapp.com",
+    projectId: "project-6745945850324870739",
+    storageBucket: "project-6745945850324870739.firebasestorage.app",
+    messagingSenderId: "1017060582171",
+    appId: "1:1017060582171:web:67ec650599fac0ab6de9be",
+    measurementId: "G-GK8N826GH6"
+  };
 // ▲▲▲ 여기까지 교체 ▲▲▲
 
 const app = initializeApp(firebaseConfig);
