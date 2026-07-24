@@ -4,8 +4,17 @@
 // 기능(뉴스 입력 → /api/generate 호출 → 결과 표시)은 이전과 완전히 동일합니다.
 // 이번에 바뀐 건 "Azure Verity" 디자인 시스템에 맞춘 화면 스타일뿐입니다.
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./style.css";
+import { db } from "./firebaseConfig";
+import {
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
 
 const CIRCLE_RADIUS = 38;
 const CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
@@ -50,6 +59,54 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
+
+  // ---- 게시판(사용자 의견) 관련 상태 ----
+  const [boardText, setBoardText] = useState("");
+  const [boardPosts, setBoardPosts] = useState([]);
+  const [boardSubmitting, setBoardSubmitting] = useState(false);
+  const [boardError, setBoardError] = useState("");
+
+  // 앱을 열면(마운트되면) Firestore의 posts 컬렉션을 최신순으로 실시간 구독
+  useEffect(() => {
+    const postsQuery = query(collection(db, "posts"), orderBy("createdAt", "desc"));
+
+    const unsubscribe = onSnapshot(
+      postsQuery,
+      (snapshot) => {
+        const list = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setBoardPosts(list);
+      },
+      (err) => {
+        setBoardError("게시글을 불러오는 중 오류가 발생했습니다.");
+        console.error(err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  async function handleBoardSubmit() {
+    if (!boardText.trim()) {
+      setBoardError("등록할 의견을 입력해주세요.");
+      return;
+    }
+
+    setBoardError("");
+    setBoardSubmitting(true);
+
+    try {
+      await addDoc(collection(db, "posts"), {
+        text: boardText.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setBoardText("");
+    } catch (err) {
+      setBoardError("등록 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      console.error(err);
+    } finally {
+      setBoardSubmitting(false);
+    }
+  }
 
   async function handleAnalyze() {
     if (!newsText.trim()) {
@@ -177,6 +234,39 @@ export default function App() {
             </p>
           </section>
         )}
+
+        <section className="board-card">
+          <h2 className="board-title">사용자 의견 게시판</h2>
+
+          <textarea
+            className="board-input"
+            placeholder="이 서비스에 대한 의견을 남겨주세요."
+            value={boardText}
+            onChange={(e) => setBoardText(e.target.value)}
+            rows={3}
+          />
+
+          <button
+            className="board-submit-btn"
+            onClick={handleBoardSubmit}
+            disabled={boardSubmitting}
+          >
+            {boardSubmitting ? "등록 중..." : "등록"}
+          </button>
+
+          {boardError && <div className="error-box board-error">⚠️ {boardError}</div>}
+
+          <ul className="board-list">
+            {boardPosts.length === 0 && (
+              <li className="board-empty">아직 등록된 의견이 없습니다.</li>
+            )}
+            {boardPosts.map((post) => (
+              <li key={post.id} className="board-item">
+                {post.text}
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     </div>
   );
